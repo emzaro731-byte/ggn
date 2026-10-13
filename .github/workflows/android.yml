@@ -42,11 +42,13 @@ jobs:
           from pathlib import Path
           p = Path('/tmp/mavis/android/app/src/main/AndroidManifest.xml')
           s = p.read_text()
-          marker = '<manifest '
-          i = s.find('>', s.find(marker)) + 1
-          permissions = '\\n    <uses-permission android:name=\"android.permission.INTERNET\"/>\\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>\\n'
-          if 'android.permission.INTERNET' not in s:
-              s = s[:i] + permissions + s[i:]
+          i = s.find('>', s.find('<manifest')) + 1
+          additions = []
+          for name in ['android.permission.INTERNET', 'android.permission.RECORD_AUDIO']:
+              if name not in s:
+                  additions.append(f'    <uses-permission android:name="{name}"/>')
+          if additions:
+              s = s[:i] + '\n' + '\n'.join(additions) + '\n' + s[i:]
           p.write_text(s)
           PY
 
