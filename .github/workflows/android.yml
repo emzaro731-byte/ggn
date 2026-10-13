@@ -140,29 +140,29 @@ jobs:
 
           if gradle.name.endswith('.kts'):
               if 'isCoreLibraryDesugaringEnabled' not in s:
-                  pattern = r'compileOptions\\s*\\{'
+                  pattern = r'compileOptions\s*\{'
                   match = re.search(pattern, s)
                   if not match:
                       raise SystemExit('Could not find compileOptions block in build.gradle.kts')
                   start = match.end()
-                  s = s[:start] + '\\n        isCoreLibraryDesugaringEnabled = true' + s[start:]
+                  s = s[:start] + '\n        isCoreLibraryDesugaringEnabled = true' + s[start:]
               dep = 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")'
           else:
               if 'coreLibraryDesugaringEnabled' not in s:
-                  pattern = r'compileOptions\\s*\\{'
+                  pattern = r'compileOptions\s*\{'
                   match = re.search(pattern, s)
                   if not match:
                       raise SystemExit('Could not find compileOptions block in build.gradle')
                   start = match.end()
-                  s = s[:start] + '\\n        coreLibraryDesugaringEnabled true' + s[start:]
+                  s = s[:start] + '\n        coreLibraryDesugaringEnabled true' + s[start:]
               dep = "coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'"
 
           if 'desugar_jdk_libs' not in s:
-              match = re.search(r'dependencies\\s*\\{', s)
+              match = re.search(r'dependencies\s*\{', s)
               if not match:
                   raise SystemExit('Could not find dependencies block in app Gradle file')
               start = match.end()
-              s = s[:start] + '\\n    ' + dep + s[start:]
+              s = s[:start] + '\n    ' + dep + s[start:]
           gradle.write_text(s)
           print(f'Enabled core library desugaring in {gradle}')
           PY
