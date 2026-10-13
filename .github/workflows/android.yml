@@ -36,6 +36,20 @@ jobs:
           rm -rf /tmp/mavis/lib
           cp -r lib /tmp/mavis/lib
 
+      - name: Add required Android permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/mavis/android/app/src/main/AndroidManifest.xml')
+          s = p.read_text()
+          marker = '<manifest '
+          i = s.find('>', s.find(marker)) + 1
+          permissions = '\\n    <uses-permission android:name=\"android.permission.INTERNET\"/>\\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>\\n'
+          if 'android.permission.INTERNET' not in s:
+              s = s[:i] + permissions + s[i:]
+          p.write_text(s)
+          PY
+
       - name: Resolve dependencies
         working-directory: /tmp/mavis
         run: flutter pub get
