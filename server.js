@@ -3,6 +3,23 @@ import express from 'express';
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '32kb' }));
+
+// Basic per-IP throttle to reduce accidental/public API abuse.
+const buckets = new Map();
+app.use((req, res, next) => {
+  if (req.path !== '/api/chat' || req.method !== 'POST') return next();
+  const now = Date.now();
+  const key = req.ip || req.socket.remoteAddress || 'unknown';
+  const bucket = buckets.get(key) || { start: now, count: 0 };
+  if (now - bucket.start >= 60_000) {
+    bucket.start = now;
+    bucket.count = 0;
+  }
+  bucket.count += 1;
+  buckets.set(key, bucket);
+  if (bucket.count > 20) return res.status(429).json({ error: 'Too many requests. Please wait one minute and try again.' });
+  next();
+});
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
