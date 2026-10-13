@@ -66,16 +66,16 @@ jobs:
           s = manifest.read_text()
           if 'android.permission.SYSTEM_ALERT_WINDOW' not in s:
               i = s.find('>', s.find('<manifest')) + 1
-              s = s[:i] + '\\n    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>' + s[i:]
+              s = s[:i] + '\n    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>' + s[i:]
           if 'MavisFloatingService' not in s:
               s = s.replace('<application', '<application')
-              s = s.replace('</application>', '    <service android:name=".MavisFloatingService" android:exported="false" />\\n    </application>')
+              s = s.replace('</application>', '    <service android:name=".MavisFloatingService" android:exported="false" />\n    </application>')
           manifest.write_text(s)
           main = next(root.glob('**/MainActivity.kt'))
           source = main.read_text()
-          package = re.search(r'package\\s+([\\w.]+)', source).group(1)
+          package = re.search(r'package\s+([\w.]+)', source).group(1)
           if 'com.emzaro.mavis/overlay' not in source:
-              source = source.replace('import io.flutter.embedding.android.FlutterActivity', 'import io.flutter.embedding.android.FlutterActivity\\nimport io.flutter.embedding.engine.FlutterEngine\\nimport io.flutter.plugin.common.MethodChannel\\nimport android.content.Intent\\nimport android.net.Uri\\nimport android.provider.Settings')
+              source = source.replace('import io.flutter.embedding.android.FlutterActivity', 'import io.flutter.embedding.android.FlutterActivity\nimport io.flutter.embedding.engine.FlutterEngine\nimport io.flutter.plugin.common.MethodChannel\nimport android.content.Intent\nimport android.net.Uri\nimport android.provider.Settings')
               source = source.replace('class MainActivity : FlutterActivity()', '''class MainActivity : FlutterActivity() {
                 override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
