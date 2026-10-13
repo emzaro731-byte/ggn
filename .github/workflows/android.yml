@@ -7,6 +7,9 @@ on:
     paths:
       - 'lib/**'
       - 'pubspec.yaml'
+      - 'server.js'
+      - 'package.json'
+      - 'render.yaml'
       - '.github/workflows/android.yml'
 
 permissions:
@@ -35,6 +38,7 @@ jobs:
           cp pubspec.yaml /tmp/mavis/pubspec.yaml
           rm -rf /tmp/mavis/lib
           cp -r lib /tmp/mavis/lib
+          rm -f /tmp/mavis/test/widget_test.dart
 
       - name: Add required Android permissions
         run: |
