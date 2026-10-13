@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-void main() => runApp(const MavisApp());
+const supabaseUrl = 'https://vihbsfrwnslnmheowkhy.supabase.co';
+const supabasePublishableKey = 'sb_publishable_j8gV4-PeFte1RMgl759uQQ_KrM_3vzK';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(url: supabaseUrl, anonKey: supabasePublishableKey);
+  runApp(const MavisApp());
+}
 
 const bg = Color(0xFF050914);
 const blue = Color(0xFF48A9FF);
@@ -21,8 +29,54 @@ class MavisApp extends StatelessWidget {
           useMaterial3: true,
           fontFamily: 'Roboto',
         ),
-        home: const MavisHome(),
+        home: Supabase.instance.client.auth.currentSession == null ? const MavisAuthGate() : const MavisHome(),
       );
+}
+
+class MavisAuthGate extends StatefulWidget {
+  const MavisAuthGate({super.key});
+  @override
+  State<MavisAuthGate> createState() => _MavisAuthGateState();
+}
+
+class _MavisAuthGateState extends State<MavisAuthGate> {
+  final email = TextEditingController();
+  final password = TextEditingController();
+  bool busy = false;
+  bool signUp = false;
+  String message = 'Sign in to connect to Mavis AI';
+  @override
+  void dispose() { email.dispose(); password.dispose(); super.dispose(); }
+  Future<void> submit() async {
+    setState(() { busy = true; message = 'Connecting…'; });
+    try {
+      final auth = Supabase.instance.client.auth;
+      if (signUp) {
+        await auth.signUp(email: email.text.trim(), password: password.text);
+        if (!mounted) return;
+        setState(() { message = 'Account created. If email confirmation is enabled, confirm your email, then sign in.'; busy = false; });
+      } else {
+        await auth.signInWithPassword(email: email.text.trim(), password: password.text);
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const MavisHome()));
+      }
+    } on AuthException catch (e) {
+      if (mounted) setState(() { message = e.message; busy = false; });
+    } catch (_) {
+      if (mounted) setState(() { message = 'Connection failed. Check your internet and try again.'; busy = false; });
+    }
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(body: Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+    const Icon(Icons.all_inclusive_rounded, size: 76, color: blue), const SizedBox(height: 12),
+    const Text('MAVIS', style: TextStyle(fontSize: 27, letterSpacing: 5, fontWeight: FontWeight.w900)),
+    const SizedBox(height: 8), const Text('Your personal AI assistant', style: TextStyle(color: Colors.white60)), const SizedBox(height: 28),
+    TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder())), const SizedBox(height: 12),
+    TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder())), const SizedBox(height: 16),
+    SizedBox(width: double.infinity, child: FilledButton(onPressed: busy ? null : submit, child: Text(busy ? 'Please wait…' : signUp ? 'Create account' : 'Sign in'))),
+    TextButton(onPressed: busy ? null : () => setState(() { signUp = !signUp; message = signUp ? 'Create your Mavis account' : 'Sign in to connect to Mavis AI'; }), child: Text(signUp ? 'Already have an account? Sign in' : 'New here? Create an account')),
+    const SizedBox(height: 8), Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+  ])))));
 }
 
 class ChatLine {
@@ -74,22 +128,32 @@ class _MavisHomeState extends State<MavisHome> {
     super.dispose();
   }
 
-  void _send([String? value]) {
+  Future<void> _send([String? value]) async {
     final text = (value ?? input.text).trim();
     if (text.isEmpty) return;
     setState(() {
       messages.add(ChatLine(text, false));
       input.clear();
       chatOpen = true;
-      status = 'MESSAGE RECEIVED';
-      if (text.toLowerCase().contains('scan and read my screen')) {
-        messages.add(ChatLine('Screen reading is not active yet. Android screen access must be implemented and explicitly granted through a native accessibility service or screen-capture permission. I will not claim to see your screen until that is connected.', true));
-      } else if (text.toLowerCase().contains('trade') || text.toLowerCase().contains('buy') || text.toLowerCase().contains('sell')) {
-        messages.add(ChatLine('Trading analysis needs live market data before it can make a useful call. No trades are placed automatically. Connect a market-data and AI backend to receive a buy / sell / wait view with entry, stop-loss, take-profit and confidence.', true));
-      } else {
-        messages.add(ChatLine('The Mavis interface is ready. To enable live AI answers, connect a secure backend API and configure MAVIS_API_URL in the app build. Keep provider keys on the server, not in the APK.', true));
-      }
+      status = 'THINKING…';
     });
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'destiny-ai',
+        body: {'messages': messages.map((m) => {'role': m.fromMavis ? 'assistant' : 'user', 'content': m.text}).toList(), 'mode': 'Chat'},
+      );
+      final data = response.data;
+      final answer = data is Map ? (data['content'] ?? data['answer'] ?? data['message'] ?? data['text']) : null;
+      if (answer is String && answer.trim().isNotEmpty) {
+        if (mounted) setState(() { messages.add(ChatLine(answer.trim(), true)); status = 'AI RESPONSE RECEIVED'; });
+      } else {
+        if (mounted) setState(() { messages.add(ChatLine('The AI service returned an unexpected response. Please try again.', true)); status = 'READY'; });
+      }
+    } on FunctionException catch (e) {
+      if (mounted) setState(() { messages.add(ChatLine('AI service error: ${e.details ?? e.reasonPhrase ?? 'request failed'}. Sign in again if your session expired.', true)); status = 'AI CONNECTION ERROR'; });
+    } catch (_) {
+      if (mounted) setState(() { messages.add(ChatLine('Could not reach the AI service. Check your connection and try again.', true)); status = 'CONNECTION ERROR'; });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (scroll.hasClients) scroll.animateTo(scroll.position.maxScrollExtent,
           duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
