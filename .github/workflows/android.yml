@@ -159,10 +159,16 @@ jobs:
 
           if 'desugar_jdk_libs' not in s:
               match = re.search(r'dependencies\s*\{', s)
-              if not match:
-                  raise SystemExit('Could not find dependencies block in app Gradle file')
-              start = match.end()
-              s = s[:start] + '\n    ' + dep + s[start:]
+              if match:
+                  start = match.end()
+                  s = s[:start] + '\n    ' + dep + s[start:]
+              else:
+                  # Recent Flutter templates may omit an app-level dependencies block.
+                  # Create one rather than failing the workflow.
+                  if gradle.name.endswith('.kts'):
+                      s = s.rstrip() + '\n\ndependencies {\n    ' + dep + '\n}\n'
+                  else:
+                      s = s.rstrip() + '\n\ndependencies {\n    ' + dep + '\n}\n'
           gradle.write_text(s)
           print(f'Enabled core library desugaring in {gradle}')
           PY
