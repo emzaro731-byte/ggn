@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/services.dart';
 final FlutterLocalNotificationsPlugin mavisNotifications = FlutterLocalNotificationsPlugin();
 
 Future<void> main() async {
@@ -47,6 +48,7 @@ class MavisHome extends StatefulWidget {
 }
 
 class _MavisHomeState extends State<MavisHome> {
+  static const _overlayChannel = MethodChannel('com.emzaro.mavis/overlay');
   final input = TextEditingController();
   final scroll = ScrollController();
   final speech = stt.SpeechToText();
@@ -85,6 +87,22 @@ class _MavisHomeState extends State<MavisHome> {
     super.dispose();
   }
 
+
+
+  Future<void> _enableFloatingM() async {
+    try {
+      final result = await _overlayChannel.invokeMethod<String>('enable');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(result ?? 'Floating M requested. If Android opened Settings, allow display over other apps and tap again.'),
+        ));
+      }
+    } on PlatformException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Could not enable floating M.')));
+    } on MissingPluginException {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Install the latest Mavis APK to enable floating M.')));
+    }
+  }
 
   Future<void> _requestNotificationPermission() async {
     try {
@@ -274,6 +292,9 @@ class _MavisHomeState extends State<MavisHome> {
       const SizedBox(height: 12),
       Text(status, style: const TextStyle(fontSize: 10, letterSpacing: 2.1, color: Colors.white54)),
       const SizedBox(height: 26),
+      const SizedBox(height: 20),
+      FilledButton.icon(onPressed: _enableFloatingM, icon: const Icon(Icons.open_in_new_rounded), label: const Text('Enable floating M button')),
+      const SizedBox(height: 10),
       Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
         _chip('Ask anything', Icons.auto_awesome),
         _chip('Voice control', Icons.mic_none),
