@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 void main() => runApp(const MavisApp());
 
@@ -73,6 +75,11 @@ class _MavisHomeState extends State<MavisHome> {
     super.dispose();
   }
 
+  static const String _apiUrl = String.fromEnvironment(
+    'MAVIS_API_URL',
+    defaultValue: 'https://mavis-grok-api.onrender.com/api/chat',
+  );
+
   Future<void> _send([String? value]) async {
     final text = (value ?? input.text).trim();
     if (text.isEmpty) return;
@@ -80,16 +87,33 @@ class _MavisHomeState extends State<MavisHome> {
       messages.add(ChatLine(text, false));
       input.clear();
       chatOpen = true;
-      status = 'THINKING…';
+      status = 'ASKING GROK…';
     });
     try {
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      final response = await http.post(
+        Uri.parse(_apiUrl),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({'message': text}),
+      ).timeout(const Duration(seconds: 90));
+      final data = jsonDecode(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final error = data is Map ? (data['error'] ?? 'Server error') : 'Server error';
+        throw Exception(error.toString());
+      }
+      final answer = data is Map ? (data['answer'] ?? data['response'] ?? '') : '';
+      if (answer.toString().trim().isEmpty) throw Exception('The AI returned an empty response.');
       if (mounted) setState(() {
-        messages.add(ChatLine('Mavis has received your message, but no AI provider is connected. Supabase has been removed as requested. Connect a different secure AI endpoint (for example, your own HTTPS backend) to enable live responses. Do not place provider API keys inside the APK.', true));
-        status = 'AI BACKEND NOT CONNECTED';
+        messages.add(ChatLine(answer.toString(), true));
+        status = 'GROK AI CONNECTED';
       });
-    } catch (_) {
-      if (mounted) setState(() { messages.add(ChatLine('Something went wrong. Please try again.', true)); status = 'READY'; });
+    } catch (e) {
+      if (mounted) setState(() {
+        messages.add(ChatLine(
+          'I could not reach the Grok service. Check your internet connection and make sure the Render service is deployed with XAI_API_KEY configured. Details: ${e.toString().replaceFirst('Exception: ', '')}',
+          true,
+        ));
+        status = 'GROK SERVICE UNAVAILABLE';
+      });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (scroll.hasClients) scroll.animateTo(scroll.position.maxScrollExtent,
@@ -225,6 +249,11 @@ class _MavisHomeState extends State<MavisHome> {
       Padding(padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
         child: Row(children: [
           const Expanded(child: Text('Mavis Assistant', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700))),
+          IconButton(
+            tooltip: 'Ask for a buy/sell signal',
+            onPressed: () => _send('Analyze the market for a possible BUY, SELL, or WAIT signal. Ask me for the symbol, timeframe, current price, and chart data if missing. Do not invent live prices. Include entry, stop-loss, take-profit, and confidence only when supported by the supplied data.'),
+            icon: const Icon(Icons.show_chart_rounded, color: blue),
+          ),
           TextButton.icon(onPressed: _screenCommand,
             icon: Icon(scanning ? Icons.stop_circle_outlined : Icons.document_scanner_outlined, size: 17),
             label: Text(scanning ? 'Stop' : 'Read screen')),
