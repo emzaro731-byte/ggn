@@ -2,7 +2,15 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-void main() => runApp(const MavisApp());
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+final FlutterLocalNotificationsPlugin mavisNotifications = FlutterLocalNotificationsPlugin();
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  const settings = InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher'));
+  await mavisNotifications.initialize(settings);
+  runApp(const MavisApp());
+}
 
 const bg = Color(0xFF050914);
 const blue = Color(0xFF48A9FF);
@@ -49,12 +57,14 @@ class _MavisHomeState extends State<MavisHome> {
   bool listening = false;
   bool scanning = false;
   bool speechAvailable = false;
+  bool notificationsEnabled = true;
   String status = 'YOUR ASSISTANT IS READY';
 
   @override
   void initState() {
     super.initState();
     _initSpeech();
+    _requestNotificationPermission();
   }
 
   Future<void> _initSpeech() async {
@@ -75,9 +85,31 @@ class _MavisHomeState extends State<MavisHome> {
     super.dispose();
   }
 
+
+  Future<void> _requestNotificationPermission() async {
+    try {
+      final android = mavisNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      final granted = await android?.requestNotificationsPermission();
+      if (mounted) setState(() => notificationsEnabled = granted ?? true);
+    } catch (_) {}
+  }
+
+  Future<void> _notify(String title, String body, {int id = 1}) async {
+    if (!notificationsEnabled) return;
+    try {
+      const details = NotificationDetails(android: AndroidNotificationDetails(
+        'mavis_alerts', 'Mavis alerts',
+        channelDescription: 'AI replies, trading insights, and service status',
+        importance: Importance.high, priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      ));
+      await mavisNotifications.show(id, title, body, details);
+    } catch (_) {}
+  }
+
   static const String _apiUrl = String.fromEnvironment(
     'MAVIS_API_URL',
-    defaultValue: 'https://mavis-grok-api.onrender.com/api/chat',
+    defaultValue: 'https://mavis-groq-api.onrender.com/api/chat',
   );
 
   Future<void> _send([String? value]) async {
@@ -106,6 +138,15 @@ class _MavisHomeState extends State<MavisHome> {
         messages.add(ChatLine(answer.toString(), true));
         status = 'GROQ AI CONNECTED';
       });
+      final answerUpper = answer.toString().toUpperCase();
+      if (answerUpper.contains('BUY')) {
+        await _notify('Mavis: Possible BUY signal', 'AI reply mentions BUY. Verify live market data and risk before acting.', id: 2);
+      } else if (answerUpper.contains('SELL')) {
+        await _notify('Mavis: Possible SELL signal', 'AI reply mentions SELL. Verify live market data and risk before acting.', id: 3);
+      } else if (answerUpper.contains('WAIT')) {
+        await _notify('Mavis: WAIT insight', 'AI reply mentions WAIT. Review the full analysis.', id: 4);
+      }
+      await _notify('Mavis AI reply ready', 'Your Groq-powered assistant has responded.', id: 5);
     } catch (e) {
       if (mounted) setState(() {
         messages.add(ChatLine(
@@ -114,6 +155,7 @@ class _MavisHomeState extends State<MavisHome> {
         ));
         status = 'GROQ SERVICE UNAVAILABLE';
       });
+      await _notify('Mavis connection alert', 'Groq service is unavailable. Check internet and backend settings.', id: 6);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (scroll.hasClients) scroll.animateTo(scroll.position.maxScrollExtent,
