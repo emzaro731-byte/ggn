@@ -87,7 +87,7 @@ class _MavisHomeState extends State<MavisHome> {
       messages.add(ChatLine(text, false));
       input.clear();
       chatOpen = true;
-      status = 'ASKING GROK…';
+      status = 'ASKING GROQ…';
     });
     try {
       final response = await http.post(
@@ -104,15 +104,15 @@ class _MavisHomeState extends State<MavisHome> {
       if (answer.toString().trim().isEmpty) throw Exception('The AI returned an empty response.');
       if (mounted) setState(() {
         messages.add(ChatLine(answer.toString(), true));
-        status = 'GROK AI CONNECTED';
+        status = 'GROQ AI CONNECTED';
       });
     } catch (e) {
       if (mounted) setState(() {
         messages.add(ChatLine(
-          'I could not reach the Grok service. Check your internet connection and make sure the Render service is deployed with XAI_API_KEY configured. Details: ${e.toString().replaceFirst('Exception: ', '')}',
+          'I could not reach the Groq service. Check your internet connection and make sure the Render service is deployed with GROQ_API_KEY configured. Details: ${e.toString().replaceFirst('Exception: ', '')}',
           true,
         ));
-        status = 'GROK SERVICE UNAVAILABLE';
+        status = 'GROQ SERVICE UNAVAILABLE';
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
