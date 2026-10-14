@@ -38,6 +38,51 @@ app.get('/', (_req, res) => res.json({
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 
+// Multi-asset crypto market overview from Coinbase public market data, summarized by Groq.
+app.get('/api/markets', async (_req, res) => {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'Render environment variable GROQ_API_KEY is not configured.' });
+  const symbols = ['BTC-USD','ETH-USD','SOL-USD','XRP-USD','DOGE-USD','ADA-USD','AVAX-USD','LINK-USD','LTC-USD','BCH-USD','DOT-USD','SHIB-USD','UNI-USD','XLM-USD'];
+  try {
+    const markets = await Promise.all(symbols.map(async symbol => {
+      try {
+        const response = await fetch('https://api.exchange.coinbase.com/products/' + symbol + '/stats', {
+          headers: { 'Accept': 'application/json', 'User-Agent': 'MavisAI/1.0' },
+          signal: AbortSignal.timeout(12000)
+        });
+        if (!response.ok) return null;
+        const d = await response.json();
+        const open = Number(d.open), last = Number(d.last), high = Number(d.high), low = Number(d.low), volume = Number(d.volume);
+        if (![open,last,high,low].every(Number.isFinite) || open <= 0) return null;
+        return { symbol: symbol.replace('-USD',''), priceUSD: last, change24hPct: Number(((last-open)/open*100).toFixed(2)), high24hUSD: high, low24hUSD: low, volume24h: Number.isFinite(volume) ? volume : null };
+      } catch (_) { return null; }
+    }));
+    const available = markets.filter(Boolean);
+    if (available.length < 3) return res.status(502).json({ error: 'Live crypto market data is temporarily unavailable.' });
+    const model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
+    const upstream = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model, temperature: 0.2, max_tokens: 900,
+        messages: [
+          { role: 'system', content: 'You are Mavis, a careful crypto market analyst. Summarize only the supplied current 24-hour market snapshot. Mention broad direction, strongest and weakest available assets, and notable volatility/risk. Do not claim this is the entire global market; it is a selected Coinbase USD crypto watchlist. Do not invent news or future prices. Clearly state that 24-hour change is not a trading signal and that no trades are placed.' },
+          { role: 'user', content: JSON.stringify(available) }
+        ]
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const payload = await upstream.json().catch(() => ({}));
+    if (!upstream.ok) return res.status(502).json({ error: 'Groq market summary failed. Check API key, model access, and account limits.' });
+    const summary = payload.choices?.[0]?.message?.content;
+    if (typeof summary !== 'string' || !summary.trim()) return res.status(502).json({ error: 'Groq returned no market summary.' });
+    return res.json({ provider: 'Coinbase Exchange + Groq', scope: 'Selected Coinbase USD crypto markets', generatedAt: new Date().toISOString(), markets: available, summary, model: payload.model || model });
+  } catch (error) {
+    console.error('Markets endpoint failed:', error.message);
+    return res.status(504).json({ error: 'Could not load the market overview. Please try again.' });
+  }
+});
+
 // Live BTCUSD analysis endpoint. Uses Coinbase public candles, then asks Groq
 // to interpret calculated indicators. It never places orders.
 app.get('/api/signal', async (req, res) => {
