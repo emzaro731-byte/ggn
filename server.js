@@ -36,6 +36,7 @@ app.get('/', (_req, res) => res.json({
   endpoints: ['/health', '/api/chat']
 }));
 app.get('/health', (_req, res) => res.json({ ok: true }));
+app.use((req, res) => res.status(404).json({ error: 'Mavis Groq API route not found.', path: req.path, method: req.method, expectedChatEndpoint: 'POST /api/chat', expectedHealthEndpoint: 'GET /health' }));
 
 
 // Multi-asset crypto market overview from Coinbase public market data, summarized by Groq.
