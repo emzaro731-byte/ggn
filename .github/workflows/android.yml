@@ -97,7 +97,13 @@ jobs:
                   // Restore the global M bubble whenever Mavis returns to the foreground,
                   // including immediately after the user grants overlay permission.
                   if (Settings.canDrawOverlays(this)) {
-                    startService(Intent(this, MavisFloatingService::class.java))
+                    // A failure to restore the optional floating bubble must never
+                    // terminate the main Flutter activity.
+                    try {
+                      startService(Intent(this, MavisFloatingService::class.java))
+                    } catch (e: RuntimeException) {
+                      android.util.Log.e("Mavis", "Floating bubble could not start", e)
+                    }
                   }
                 }
               }''')
@@ -124,7 +130,12 @@ jobs:
               WindowManager.LayoutParams p=new WindowManager.LayoutParams(62,62,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT);
               p.gravity=Gravity.TOP|Gravity.END; p.x=18; p.y=260;
               b.setOnTouchListener(new View.OnTouchListener(){float x,y; int sx,sy; public boolean onTouch(View v, android.view.MotionEvent e){ if(e.getAction()==0){x=e.getRawX();y=e.getRawY();sx=p.x;sy=p.y;return true;} if(e.getAction()==2){p.x=sx+(int)(x-e.getRawX());p.y=sy+(int)(e.getRawY()-y);wm.updateViewLayout(b,p);return true;} if(e.getAction()==1){ if(Math.abs(e.getRawX()-x)<12&&Math.abs(e.getRawY()-y)<12){Intent i=getPackageManager().getLaunchIntentForPackage(getPackageName()); if(i!=null){i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP);startActivity(i);} } return true;} return true;}});
-              bubble=b; wm.addView(b,p);
+              try { wm.addView(b,p); bubble=b; }
+            catch (RuntimeException e) {
+              android.util.Log.e("Mavis", "Overlay view unavailable; keeping app alive", e);
+              bubble=null;
+              stopSelf();
+            }
             }
             public int onStartCommand(Intent i,int f,int id){return START_STICKY;}
             public void onDestroy(){if(wm!=null&&bubble!=null)wm.removeView(bubble);super.onDestroy();}
