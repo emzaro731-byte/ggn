@@ -9,8 +9,17 @@ final FlutterLocalNotificationsPlugin mavisNotifications = FlutterLocalNotificat
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  const settings = InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher'));
-  await mavisNotifications.initialize(settings);
+  // Notifications are optional: a plugin/device initialization error must not
+  // prevent the main Mavis interface from launching.
+  try {
+    const settings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    );
+    await mavisNotifications.initialize(settings);
+  } catch (error, stackTrace) {
+    debugPrint('Mavis notification initialization skipped: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
   runApp(const MavisApp());
 }
 
