@@ -84,12 +84,20 @@ jobs:
                       if (!Settings.canDrawOverlays(this)) {
                         val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))
                         startActivity(intent)
-                        result.success("Allow Mavis to display over other apps, then return and tap Enable floating M again.")
+                        result.success("Allow Mavis to display over other apps. The floating M will start automatically when you return.")
                       } else {
                         startService(Intent(this, MavisFloatingService::class.java))
-                        result.success("Floating M is enabled.")
+                        result.success("Floating M is enabled across your apps.")
                       }
                     } else result.notImplemented()
+                  }
+                }
+                override fun onResume() {
+                  super.onResume()
+                  // Restore the global M bubble whenever Mavis returns to the foreground,
+                  // including immediately after the user grants overlay permission.
+                  if (Settings.canDrawOverlays(this)) {
+                    startService(Intent(this, MavisFloatingService::class.java))
                   }
                 }
               }''')
