@@ -37,6 +37,85 @@ app.get('/', (_req, res) => res.json({
 }));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
+
+// Live BTCUSD analysis endpoint. Uses Coinbase public candles, then asks Groq
+// to interpret calculated indicators. It never places orders.
+app.get('/api/signal', async (req, res) => {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'Render environment variable GROQ_API_KEY is not configured.' });
+  const allowed = new Set(['5m', '15m', '1h']);
+  const timeframe = String(req.query.timeframe || '15m');
+  if (!allowed.has(timeframe)) return res.status(400).json({ error: 'timeframe must be 5m, 15m, or 1h' });
+  const granularity = ({ '5m': 300, '15m': 900, '1h': 3600 })[timeframe];
+  try {
+    const response = await fetch(`https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=${granularity}`, {
+      headers: { 'Accept': 'application/json', 'User-Agent': 'MavisAI/1.0' },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) return res.status(502).json({ error: 'Live market data provider is unavailable.' });
+    const raw = await response.json();
+    if (!Array.isArray(raw) || raw.length < 55) return res.status(502).json({ error: 'Not enough candle data to calculate a signal.' });
+    // Coinbase candles are [time, low, high, open, close, volume], newest first.
+    const candles = raw.slice().reverse().map(x => ({ time: x[0], low: +x[1], high: +x[2], open: +x[3], close: +x[4], volume: +x[5] }));
+    const closes = candles.map(x => x.close);
+    const ema = (values, period) => {
+      const k = 2 / (period + 1);
+      let value = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+      for (const price of values.slice(period)) value = price * k + value * (1 - k);
+      return value;
+    };
+    const changes = closes.slice(1).map((v, i) => v - closes[i]);
+    const recent = changes.slice(-14);
+    const gains = recent.reduce((s, v) => s + Math.max(v, 0), 0) / 14;
+    const losses = recent.reduce((s, v) => s + Math.max(-v, 0), 0) / 14;
+    const rsi = losses === 0 ? 100 : 100 - (100 / (1 + gains / losses));
+    const latest = candles[candles.length - 1];
+    const indicators = {
+      symbol: 'BTC-USD',
+      timeframe,
+      provider: 'Coinbase Exchange public candles',
+      candleTimeUTC: new Date(latest.time * 1000).toISOString(),
+      currentPriceUSD: latest.close,
+      ema20: Number(ema(closes.slice(-60), 20).toFixed(2)),
+      ema50: Number(ema(closes.slice(-60), 50).toFixed(2)),
+      rsi14: Number(rsi.toFixed(2)),
+      recentCandles: candles.slice(-5).map(x => ({ timeUTC: new Date(x.time * 1000).toISOString(), open: x.open, high: x.high, low: x.low, close: x.close, volume: x.volume }))
+    };
+    const model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
+    const upstream = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: 700,
+        messages: [
+          { role: 'system', content: 'You are Mavis, a cautious trading-analysis assistant. Analyze only the supplied live candle data and indicators. Return a concise JSON object with keys signal (BUY, SELL, or WAIT), timeframe, reason, entry, stopLoss, takeProfit, confidence (low/medium/high), and riskNote. Use WAIT if indicators conflict or evidence is weak. Do not guarantee profits. Entry/stopLoss/takeProfit must be numeric USD levels or null. This is analysis only; never place trades.' },
+          { role: 'user', content: JSON.stringify(indicators) }
+        ]
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const payload = await upstream.json().catch(() => ({}));
+    if (!upstream.ok) return res.status(502).json({ error: 'Groq signal analysis failed. Check the API key, model access, and account limits.' });
+    const answer = payload.choices?.[0]?.message?.content;
+    if (!answer) return res.status(502).json({ error: 'Groq returned no signal.' });
+    let analysis;
+    try {
+      const cleaned = answer.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      analysis = JSON.parse(cleaned);
+    } catch {
+      analysis = { signal: 'WAIT', reason: 'The AI response could not be safely parsed. Review the raw analysis.', rawAnalysis: answer, confidence: 'low', entry: null, stopLoss: null, takeProfit: null };
+    }
+    if (!['BUY', 'SELL', 'WAIT'].includes(String(analysis.signal).toUpperCase())) analysis.signal = 'WAIT';
+    analysis.signal = String(analysis.signal).toUpperCase();
+    return res.json({ ...analysis, market: indicators, generatedAt: new Date().toISOString(), model: payload.model || model, automatedTrading: false });
+  } catch (error) {
+    console.error('Signal endpoint failed:', error.message);
+    return res.status(504).json({ error: 'Could not retrieve live market data or complete analysis. Try again shortly.' });
+  }
+});
+
 app.post('/api/chat', async (req, res) => {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'Render environment variable GROQ_API_KEY is not configured.' });
