@@ -223,6 +223,51 @@ class _MavisHomeState extends State<MavisHome> {
     });
   }
 
+  Future<void> _readMarkets() async {
+    setState(() {
+      chatOpen = true;
+      status = 'READING CRYPTO MARKETS…';
+      messages.add(ChatLine('Load selected live crypto markets and ask Groq to summarize them.', false));
+    });
+    try {
+      final uri = Uri.parse(_apiUrl.replaceFirst('/api/chat', '/api/markets'));
+      final response = await http.get(uri).timeout(const Duration(seconds: 60));
+      final data = jsonDecode(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300 || data is! Map) {
+        throw Exception(data is Map ? (data['error'] ?? 'Market service error').toString() : 'Market service error');
+      }
+      final markets = data['markets'] is List ? data['markets'] as List : <dynamic>[];
+      final rows = markets.whereType<Map>().map((m) {
+        final symbol = m['symbol'] ?? '?';
+        final price = m['priceUSD'] ?? '?';
+        final change = m['change24hPct'] ?? '?';
+        final sign = change is num && change > 0 ? '+' : '';
+        return '$symbol: $price | 24h: $sign$change%';
+      }).join('\n');
+      final answer = 'CRYPTO MARKET OVERVIEW\n'
+          'Updated: ${data['generatedAt'] ?? 'just now'}\n'
+          'Source: ${data['scope'] ?? 'Coinbase USD markets'}\n\n'
+          '${data['summary'] ?? 'No AI summary returned.'}\n\n'
+          'LIVE PRICES (USD)\n$rows\n\n'
+          'This is a selected crypto watchlist, not every global market. Prices move quickly; this overview is informational and does not place trades.';
+      if (mounted) setState(() {
+        messages.add(ChatLine(answer, true));
+        status = 'CRYPTO MARKET OVERVIEW READY';
+      });
+      if (autoReadReplies) await _readAloud(answer);
+      await _notify('Mavis crypto markets updated', 'Groq has summarized the latest available crypto watchlist.', id: 21);
+    } catch (e) {
+      if (mounted) setState(() {
+        messages.add(ChatLine('Could not read the market overview: ${e.toString().replaceFirst('Exception: ', '')}. Check the Render service and GROQ_API_KEY.', true));
+        status = 'MARKET OVERVIEW UNAVAILABLE';
+      });
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (scroll.hasClients) scroll.animateTo(scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    });
+  }
+
   Future<void> _getSignal() async {
     setState(() {
       chatOpen = true;
@@ -403,6 +448,7 @@ class _MavisHomeState extends State<MavisHome> {
             onPressed: () => setState(() => autoReadReplies = !autoReadReplies),
             icon: Icon(autoReadReplies ? Icons.volume_up_rounded : Icons.volume_off_rounded,
               color: autoReadReplies ? blue : Colors.white54)),
+          IconButton(tooltip: 'Read the crypto market', onPressed: _readMarkets, icon: const Icon(Icons.public_rounded, color: blue)),
           IconButton(
             tooltip: 'Ask for a buy/sell signal',
             onPressed: _getSignal,
