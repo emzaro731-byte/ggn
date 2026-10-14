@@ -145,7 +145,7 @@ jobs:
           manifest = root / 'AndroidManifest.xml'
           s = manifest.read_text()
           main = next(root.glob('**/MainActivity.kt'))
-          package = re.search(r'package\\s+([\\w.]+)', main.read_text()).group(1)
+          package = re.search(r'package\s+([\w.]+)', main.read_text()).group(1)
           java_dir = main.parent
           (java_dir / 'MavisVoiceInteractionService.java').write_text('''package PACKAGE_NAME;
           public class MavisVoiceInteractionService extends android.service.voice.VoiceInteractionService {}
