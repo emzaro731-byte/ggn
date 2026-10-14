@@ -186,9 +186,18 @@ class _MavisHomeState extends State<MavisHome> {
         headers: const {'Content-Type': 'application/json'},
         body: jsonEncode({'message': text}),
       ).timeout(const Duration(seconds: 90));
-      final data = jsonDecode(response.body);
+      dynamic data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (_) {
+        final body = response.body.trim();
+        if (response.statusCode == 404 || body.toLowerCase().contains('not found')) {
+          throw Exception('The configured backend returned 404 Not Found. The Render service URL or deployed server is incorrect. Deploy the latest ggn/server.js and set MAVIS_API_URL to your real Render URL ending in /api/chat.');
+        }
+        throw Exception('Backend returned a non-JSON response (HTTP ${response.statusCode}). Check the Render service URL and deployment.');
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        final error = data is Map ? (data['error'] ?? 'Server error') : 'Server error';
+        final error = data is Map ? (data['error'] ?? 'Backend HTTP ${response.statusCode}') : 'Backend HTTP ${response.statusCode}';
         throw Exception(error.toString());
       }
       final answer = data is Map ? (data['answer'] ?? data['response'] ?? '') : '';
@@ -210,7 +219,7 @@ class _MavisHomeState extends State<MavisHome> {
     } catch (e) {
       if (mounted) setState(() {
         messages.add(ChatLine(
-          'I could not reach the Groq service. Check your internet connection and make sure the Render service is deployed with GROQ_API_KEY configured. Details: ${e.toString().replaceFirst('Exception: ', '')}',
+          'I could not connect to Groq through the Mavis backend. Check the Render deployment, its URL, and the GROQ_API_KEY environment variable. Details: ${e.toString().replaceFirst('Exception: ', '')}',
           true,
         ));
         status = 'GROQ SERVICE UNAVAILABLE';
