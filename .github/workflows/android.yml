@@ -164,13 +164,54 @@ jobs:
             @Override
             public void onShow(android.os.Bundle args, int flags) {
               super.onShow(args, flags);
-              android.widget.TextView view = new android.widget.TextView(getContext());
-              view.setText("Mavis AI\\nOpen Mavis to chat or use voice commands.");
-              view.setTextSize(20);
-              view.setTextColor(android.graphics.Color.WHITE);
-              view.setGravity(android.view.Gravity.CENTER);
-              view.setBackgroundColor(0xff101827);
-              setContentView(view);
+              android.widget.LinearLayout root = new android.widget.LinearLayout(getContext());
+              root.setOrientation(android.widget.LinearLayout.VERTICAL);
+              root.setGravity(android.view.Gravity.CENTER);
+              root.setPadding(32, 48, 32, 32);
+              root.setBackgroundColor(0xff050914);
+              android.widget.TextView logo = new android.widget.TextView(getContext());
+              logo.setText("M");
+              logo.setTextColor(android.graphics.Color.WHITE);
+              logo.setTextSize(42);
+              logo.setTypeface(null, android.graphics.Typeface.BOLD);
+              logo.setGravity(android.view.Gravity.CENTER);
+              android.graphics.drawable.GradientDrawable circle = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                new int[]{0xff65c9ff, 0xff0751d4});
+              circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+              circle.setStroke(3, 0xffd9f5ff);
+              logo.setBackground(circle);
+              android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(112,112);
+              lp.bottomMargin = 24;
+              root.addView(logo, lp);
+              android.widget.TextView title = new android.widget.TextView(getContext());
+              title.setText("MAVIS AI");
+              title.setTextColor(0xffeaf5ff);
+              title.setTextSize(26);
+              title.setTypeface(null, android.graphics.Typeface.BOLD);
+              title.setGravity(android.view.Gravity.CENTER);
+              root.addView(title);
+              android.widget.TextView prompt = new android.widget.TextView(getContext());
+              prompt.setText("Start talking");
+              prompt.setTextColor(0xff9eb8d5);
+              prompt.setTextSize(20);
+              prompt.setGravity(android.view.Gravity.CENTER);
+              android.widget.LinearLayout.LayoutParams pp = new android.widget.LinearLayout.LayoutParams(-1,-2);
+              pp.topMargin = 70;
+              pp.bottomMargin = 24;
+              root.addView(prompt, pp);
+              android.widget.Button open = new android.widget.Button(getContext());
+              open.setText("Open Mavis");
+              open.setOnClickListener(v -> {
+                android.content.Intent intent = getContext().getPackageManager().getLaunchIntentForPackage(getContext().getPackageName());
+                if (intent != null) {
+                  intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                  getContext().startActivity(intent);
+                }
+                hide();
+              });
+              root.addView(open, new android.widget.LinearLayout.LayoutParams(-1,-2));
+              setContentView(root);
             }
           }
           '''.replace('PACKAGE_NAME', package))
