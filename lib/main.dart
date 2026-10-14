@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 final FlutterLocalNotificationsPlugin mavisNotifications = FlutterLocalNotificationsPlugin();
 
 Future<void> main() async {
@@ -52,6 +53,7 @@ class _MavisHomeState extends State<MavisHome> {
   final input = TextEditingController();
   final scroll = ScrollController();
   final speech = stt.SpeechToText();
+  final FlutterTts tts = FlutterTts();
   final messages = <ChatLine>[
     ChatLine('Hello. I’m Mavis, your personal AI assistant. What can I help you with?', true),
   ];
@@ -59,6 +61,8 @@ class _MavisHomeState extends State<MavisHome> {
   bool listening = false;
   bool scanning = false;
   bool speechAvailable = false;
+  bool autoReadReplies = true;
+  bool speaking = false;
   bool notificationsEnabled = true;
   String status = 'YOUR ASSISTANT IS READY';
 
@@ -66,7 +70,43 @@ class _MavisHomeState extends State<MavisHome> {
   void initState() {
     super.initState();
     _initSpeech();
+    _initTts();
     _requestNotificationPermission();
+  }
+
+  Future<void> _initTts() async {
+    try {
+      await tts.setLanguage('en-NG');
+      await tts.setSpeechRate(0.48);
+      await tts.setPitch(1.0);
+      tts.setStartHandler(() { if (mounted) setState(() => speaking = true); });
+      tts.setCompletionHandler(() { if (mounted) setState(() => speaking = false); });
+      tts.setCancelHandler(() { if (mounted) setState(() => speaking = false); });
+      tts.setErrorHandler((_) { if (mounted) setState(() => speaking = false); });
+    } catch (_) {
+      try { await tts.setLanguage('en-US'); } catch (_) {}
+    }
+  }
+
+  Future<void> _readAloud(String text) async {
+    final cleanText = text.replaceAll(RegExp(r'[*#_`>]'), '').trim();
+    if (cleanText.isEmpty) return;
+    try {
+      await tts.stop();
+      await tts.speak(cleanText);
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Text-to-speech is unavailable. Check Android speech services.')));
+    }
+  }
+
+  Future<void> _toggleReadAloud(String text) async {
+    if (speaking) {
+      await tts.stop();
+      if (mounted) setState(() => speaking = false);
+    } else {
+      await _readAloud(text);
+    }
   }
 
   Future<void> _initSpeech() async {
@@ -84,6 +124,7 @@ class _MavisHomeState extends State<MavisHome> {
     input.dispose();
     scroll.dispose();
     speech.stop();
+    tts.stop();
     super.dispose();
   }
 
@@ -156,6 +197,7 @@ class _MavisHomeState extends State<MavisHome> {
         messages.add(ChatLine(answer.toString(), true));
         status = 'GROQ AI CONNECTED';
       });
+      if (autoReadReplies) await _readAloud(answer.toString());
       final answerUpper = answer.toString().toUpperCase();
       if (answerUpper.contains('BUY')) {
         await _notify('Mavis: Possible BUY signal', 'AI reply mentions BUY. Verify live market data and risk before acting.', id: 2);
@@ -357,6 +399,10 @@ class _MavisHomeState extends State<MavisHome> {
       Padding(padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
         child: Row(children: [
           const Expanded(child: Text('Mavis Assistant', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700))),
+          IconButton(tooltip: autoReadReplies ? 'Turn off automatic voice replies' : 'Turn on automatic voice replies',
+            onPressed: () => setState(() => autoReadReplies = !autoReadReplies),
+            icon: Icon(autoReadReplies ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+              color: autoReadReplies ? blue : Colors.white54)),
           IconButton(
             tooltip: 'Ask for a buy/sell signal',
             onPressed: _getSignal,
@@ -380,7 +426,16 @@ class _MavisHomeState extends State<MavisHome> {
                 color: m.fromMavis ? const Color(0xFF162A43) : const Color(0xFF145CB7),
                 borderRadius: BorderRadius.circular(17),
                 border: Border.all(color: m.fromMavis ? Colors.white10 : blue.withOpacity(.35))),
-              child: Text(m.text, style: const TextStyle(height: 1.4, fontSize: 13)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(m.text, style: const TextStyle(height: 1.4, fontSize: 13)),
+                if (m.fromMavis) Align(alignment: Alignment.centerRight, child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: speaking ? 'Stop reading' : 'Read this reply aloud',
+                  onPressed: () => _toggleReadAloud(m.text),
+                  icon: Icon(speaking ? Icons.stop_circle_outlined : Icons.volume_up_rounded,
+                    size: 19, color: const Color(0xFF83CFFF)),
+                )),
+              ]),
             ));
         })),
       Padding(padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
