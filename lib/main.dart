@@ -181,6 +181,51 @@ class _MavisHomeState extends State<MavisHome> {
     });
   }
 
+  Future<void> _getSignal() async {
+    setState(() {
+      chatOpen = true;
+      status = 'FETCHING LIVE BTCUSD DATA…';
+      messages.add(ChatLine('Checking live BTCUSD candles and indicators for a 15-minute signal…', false));
+    });
+    try {
+      final signalUrl = Uri.parse(_apiUrl.replaceFirst('/api/chat', '/api/signal'))
+          .replace(queryParameters: {'timeframe': '15m'});
+      final response = await http.get(signalUrl).timeout(const Duration(seconds: 45));
+      final data = jsonDecode(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300 || data is! Map) {
+        throw Exception(data is Map ? (data['error'] ?? 'Signal service error').toString() : 'Signal service error');
+      }
+      final market = data['market'] is Map ? data['market'] as Map : {};
+      final signal = (data['signal'] ?? 'WAIT').toString().toUpperCase();
+      final answer = 'LIVE BTCUSD SIGNAL: $signal\n'
+          'Timeframe: ${data['timeframe'] ?? '15m'}\n'
+          'Price: ${market['currentPriceUSD'] ?? 'unavailable'}\n'
+          'EMA 20: ${market['ema20'] ?? 'n/a'} | EMA 50: ${market['ema50'] ?? 'n/a'}\n'
+          'RSI 14: ${market['rsi14'] ?? 'n/a'}\n'
+          'Reason: ${data['reason'] ?? 'No reason provided'}\n'
+          'Possible entry: ${data['entry'] ?? 'not provided'}\n'
+          'Stop-loss: ${data['stopLoss'] ?? 'not provided'}\n'
+          'Take-profit: ${data['takeProfit'] ?? 'not provided'}\n'
+          'Confidence: ${data['confidence'] ?? 'low'}\n'
+          'Risk note: ${data['riskNote'] ?? 'Signals can be wrong; protect your capital.'}\n'
+          'Analysis only — Mavis does not place trades automatically.';
+      if (mounted) setState(() {
+        messages.add(ChatLine(answer, true));
+        status = 'LIVE BTCUSD ANALYSIS READY';
+      });
+      await _notify('Mavis BTCUSD: $signal', '15-minute analysis completed. Open Mavis to review the entry and risk details.', id: 20);
+    } catch (e) {
+      if (mounted) setState(() {
+        messages.add(ChatLine('Could not generate a live signal: ${e.toString().replaceFirst('Exception: ', '')}. Check that the Render backend has redeployed and GROQ_API_KEY is configured.', true));
+        status = 'SIGNAL SERVICE UNAVAILABLE';
+      });
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (scroll.hasClients) scroll.animateTo(scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    });
+  }
+
   Future<void> _voice() async {
     if (listening) {
       await speech.stop();
@@ -314,7 +359,7 @@ class _MavisHomeState extends State<MavisHome> {
           const Expanded(child: Text('Mavis Assistant', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700))),
           IconButton(
             tooltip: 'Ask for a buy/sell signal',
-            onPressed: () => _send('Analyze the market for a possible BUY, SELL, or WAIT signal. Ask me for the symbol, timeframe, current price, and chart data if missing. Do not invent live prices. Include entry, stop-loss, take-profit, and confidence only when supported by the supplied data.'),
+            onPressed: _getSignal,
             icon: const Icon(Icons.show_chart_rounded, color: blue),
           ),
           TextButton.icon(onPressed: _screenCommand,
