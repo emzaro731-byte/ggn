@@ -168,7 +168,7 @@ class _MavisHomeState extends State<MavisHome> {
 
   static const String _apiUrl = String.fromEnvironment(
     'MAVIS_API_URL',
-    defaultValue: 'https://mavis-groq-api.onrender.com/api/chat',
+    defaultValue: 'https://ggn-nbf6.onrender.com/api/chat',
   );
 
   Future<void> _send([String? value]) async {
