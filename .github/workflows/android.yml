@@ -94,17 +94,9 @@ jobs:
                 }
                 override fun onResume() {
                   super.onResume()
-                  // Restore the global M bubble whenever Mavis returns to the foreground,
-                  // including immediately after the user grants overlay permission.
-                  if (Settings.canDrawOverlays(this)) {
-                    // A failure to restore the optional floating bubble must never
-                    // terminate the main Flutter activity.
-                    try {
-                      startService(Intent(this, MavisFloatingService::class.java))
-                    } catch (e: RuntimeException) {
-                      android.util.Log.e("Mavis", "Floating bubble could not start", e)
-                    }
-                  }
+                  // Keep startup stable: do not launch an overlay service automatically.
+                  // Enable the floating M only when the user explicitly taps its control.
+                  // After granting overlay permission, return to Mavis and tap enable again.
                 }
               }''')
               main.write_text(source)
