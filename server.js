@@ -36,7 +36,6 @@ app.get('/', (_req, res) => res.json({
   endpoints: ['/health', '/api/chat']
 }));
 app.get('/health', (_req, res) => res.json({ ok: true }));
-app.use((req, res) => res.status(404).json({ error: 'Mavis Groq API route not found.', path: req.path, method: req.method, expectedChatEndpoint: 'POST /api/chat', expectedHealthEndpoint: 'GET /health' }));
 
 
 // Multi-asset crypto market overview from Coinbase public market data, summarized by Groq.
@@ -216,6 +215,9 @@ Use WAIT when the evidence is unclear or contradictory. Do not promise profits, 
     return res.status(504).json({ error: 'Groq timed out or could not be reached. Try again.' });
   }
 });
+
+
+app.use((req, res) => res.status(404).json({ error: 'Mavis Groq API route not found.', path: req.path, method: req.method, expectedChatEndpoint: 'POST /api/chat', expectedHealthEndpoint: 'GET /health' }));
 
 const port = Number(process.env.PORT || 3000);
 app.listen(port, '0.0.0.0', () => console.log(`Mavis Groq API listening on ${port}`));
