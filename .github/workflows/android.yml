@@ -136,6 +136,76 @@ jobs:
           '''.replace('PACKAGE_NAME',package))
           PY
 
+      - name: Add selectable Mavis default assistant
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path('/tmp/mavis/android/app/src/main')
+          manifest = root / 'AndroidManifest.xml'
+          s = manifest.read_text()
+          main = next(root.glob('**/MainActivity.kt'))
+          package = re.search(r'package\\s+([\\w.]+)', main.read_text()).group(1)
+          java_dir = main.parent
+          (java_dir / 'MavisVoiceInteractionService.java').write_text('''package PACKAGE_NAME;
+          public class MavisVoiceInteractionService extends android.service.voice.VoiceInteractionService {}
+          '''.replace('PACKAGE_NAME', package))
+          (java_dir / 'MavisVoiceSessionService.java').write_text('''package PACKAGE_NAME;
+          public class MavisVoiceSessionService extends android.service.voice.VoiceInteractionSessionService {
+            @Override
+            public android.service.voice.VoiceInteractionSession onNewSession(android.os.Bundle args) {
+              return new MavisVoiceSession(this);
+            }
+          }
+          '''.replace('PACKAGE_NAME', package))
+          (java_dir / 'MavisVoiceSession.java').write_text('''package PACKAGE_NAME;
+          public class MavisVoiceSession extends android.service.voice.VoiceInteractionSession {
+            public MavisVoiceSession(android.content.Context context) { super(context); }
+            @Override
+            public void onShow(android.os.Bundle args, int flags) {
+              super.onShow(args, flags);
+              android.widget.TextView view = new android.widget.TextView(getContext());
+              view.setText("Mavis AI\\nOpen Mavis to chat or use voice commands.");
+              view.setTextSize(20);
+              view.setTextColor(android.graphics.Color.WHITE);
+              view.setGravity(android.view.Gravity.CENTER);
+              view.setBackgroundColor(0xff101827);
+              setContentView(view);
+            }
+          }
+          '''.replace('PACKAGE_NAME', package))
+          res = root / 'res' / 'xml'
+          res.mkdir(parents=True, exist_ok=True)
+          (res / 'mavis_voice_interaction.xml').write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:sessionService="PACKAGE_NAME.MavisVoiceSessionService"
+              android:supportsAssist="true"
+              android:supportsLaunchVoiceAssistFromKeyguard="false" />
+          '''.replace('PACKAGE_NAME', package))
+          if 'MavisVoiceInteractionService' not in s:
+              block = '''
+                  <service
+                      android:name=".MavisVoiceInteractionService"
+                      android:label="Mavis"
+                      android:permission="android.permission.BIND_VOICE_INTERACTION"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.service.voice.VoiceInteractionService" />
+                      </intent-filter>
+                      <meta-data
+                          android:name="android.service.voice"
+                          android:resource="@xml/mavis_voice_interaction" />
+                  </service>
+                  <service
+                      android:name=".MavisVoiceSessionService"
+                      android:permission="android.permission.BIND_VOICE_INTERACTION"
+                      android:exported="true" />
+              '''
+              s = s.replace('</application>', block + '\\n    </application>')
+          manifest.write_text(s)
+          print('Registered Mavis as a selectable Android voice-assistant service.')
+          PY
+
       - name: Enable core library desugaring for notifications
         run: |
           python3 - <<'PY'
